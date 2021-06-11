@@ -87,12 +87,6 @@ protected:
 #ifdef _WIN32
   // Process information handle for Windows
   PROCESS_INFORMATION proc_info;
-  // Named pipe name for communication
-  // TODO, better names?!
-  // LPTSTR lpszPipename_Child_IN = TEXT("\\\\.\\pipe\\cbmc\\SMT2\\child\\IN");
-  // LPTSTR lpszPipename_Child_OUT = TEXT("\\\\.\\pipe\\cbmc\\SMT2\\child\\OUT");
-  // HANDLE child_std_IN;
-  // HANDLE child_std_OUT;
   // Handles for communication with child process
   HANDLE child_std_IN_Rd;
   HANDLE child_std_IN_Wr;
