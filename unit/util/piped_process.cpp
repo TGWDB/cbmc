@@ -23,7 +23,7 @@ TEST_CASE(
   piped_processt process = piped_processt(commands);
 
   // This is an indirect way to detect when the pipe has something since
-  // -1 is an infinite timeout wait. This could (in theory) also return
+  // infinite timeout wait returns on data. This could (in theory) also return
   // when there is an error, but this unit test is not doing error handling.
   process.can_receive(PIPED_PROCESS_INFINITE_TIMEOUT);
   std::string response = strip_string(process.receive());
@@ -47,15 +47,12 @@ TEST_CASE(
 #endif
   piped_processt process = piped_processt(commands);
 
-  // This is an indirect way to detect when the pipe has something since
-  // -1 is an infinite timeout wait. This could (in theory) also return
-  // when there is an error, but this unit test is not doing error handling.
   process.can_receive(PIPED_PROCESS_INFINITE_TIMEOUT);
   std::string response = process.receive();
   // This tracks how many times we tried, if for some reason we are stuck
   // give up eventually for this test.
   int too_many_tries = 0;
-  // The expected length of the output string is 6 characters, keep
+  // The expected length of the output string is >=64 characters, keep
   // trying up to the retry limit of 5 or the string is long enough
   while(too_many_tries < 5 && response.length() < 64)
   {
@@ -68,7 +65,58 @@ TEST_CASE(
   REQUIRE(response.substr(0, 64) == expected_error);
 }
 
-#ifndef _WIN32
+#ifdef _WIN32
+
+// This is a test of child termination, it's not perfect and could go wrong
+// if run at midnight, but it's sufficient for a basic check for now.
+TEST_CASE(
+  "Creating a sub process and terminate it.",
+  "[core][util][piped_process]")
+{
+  std::vector<std::string> commands;
+  commands.push_back("cmd /c ping 127.0.0.1 -n 6 > nul");
+  SYSTEMTIME st;
+  GetSystemTime(&st);
+  WORD calc = 3600 * st.wHour + 60 * st.wMinute + st.wSecond;
+  piped_processt process = piped_processt(commands);
+  process.~piped_processt();
+  GetSystemTime(&st);
+  // New time minus old time, could go wrong at midnight
+  calc = 3600 * st.wHour + 60 * st.wMinute + st.wSecond - calc;
+  // Command should take >5 seconds, check we called destructor and
+  // moved on in less than 2 seconds.
+  REQUIRE(calc < 2);
+}
+
+TEST_CASE(
+  "Creating a sub process and reading its output quickly.",
+  "[core][util][piped_process]")
+{
+  const std::string to_be_echoed = "The Jabberwocky";
+  std::vector<std::string> commands;
+  // This may be an ugly way to do this, but the second part of the command
+  // effectively waits for 6 seconds. We should probably check the response
+  // is fast, but manual testing showed this was fine.
+  commands.push_back(
+    "cmd /c echo The Jabberwocky && cmd /c ping 127.0.0.1 -n 6 > nul && exit");
+  SYSTEMTIME st;
+  GetSystemTime(&st);
+  WORD calc = 3600 * st.wHour + 60 * st.wMinute + st.wSecond;
+  piped_processt process = piped_processt(commands);
+
+  process.can_receive(PIPED_PROCESS_INFINITE_TIMEOUT);
+  std::string response = strip_string(process.receive());
+
+  GetSystemTime(&st);
+  // New time minus old time, could go wrong at midnight
+  calc = 3600 * st.wHour + 60 * st.wMinute + st.wSecond - calc;
+  // Command should take >5 seconds, check we received data in less than
+  // 2 seconds.
+  REQUIRE(calc < 2);
+  REQUIRE(response == to_be_echoed);
+}
+
+#else
 
 TEST_CASE(
   "Creating a sub process of z3 and read a response from an echo command.",
