@@ -33,69 +33,63 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
   sec_attr.nLength = sizeof(SECURITY_ATTRIBUTES);
   sec_attr.bInheritHandle = TRUE;
   sec_attr.lpSecurityDescriptor = NULL;
-
-  // START NAMED PIPES STUFF
-  // child_std_IN = CreateNamedPipe(
-  //   lpszPipename_Child_IN,
-  //   PIPE_ACCESS_DUPLEX,       // Read and write mode
-  //   PIPE_NOWAIT,              // Do not block
-  //   1,                        // One instance of the pipe?
-  //   BUFSIZE, BUFSIZE,         // Output and input bufffer sizes
-  //   0,                        // Timeout in ms, 0 = use system default
-  //   &sec_attr);
-  // SetHandleInformation(child_std_IN, HANDLE_FLAG_INHERIT, 0);
-  // child_std_OUT = CreateNamedPipe(
-  //   lpszPipename_Child_OUT,
-  //   PIPE_ACCESS_DUPLEX,       // Read and write mode
-  //   PIPE_NOWAIT,              // Do not block
-  //   1,                        // One instance of the pipe?
-  //   BUFSIZE, BUFSIZE,         // Output and input bufffer sizes
-  //   0,                        // Timeout in ms, 0 = use system default
-  //   &sec_attr);
-  // SetHandleInformation(child_std_OUT, HANDLE_FLAG_INHERIT, 0);
-
-  // // TODO, error handling for the above pipes
-  // STARTUPINFO start_info;
-  // BOOL success = FALSE;
-  // ZeroMemory(&proc_info, sizeof(PROCESS_INFORMATION));
-  // ZeroMemory( &start_info, sizeof(STARTUPINFO) );
-  // start_info.cb = sizeof(STARTUPINFO);
-  // start_info.hStdError = child_std_OUT;
-  // start_info.hStdOutput = child_std_OUT;
-  // start_info.hStdInput = child_std_IN;
-  // start_info.dwFlags |= STARTF_USESTDHANDLES;
-
-  // // TODO: properly do the construciton of the command line here!
-  // TCHAR szCmdline[] = TEXT("echo hi");
-  // success = CreateProcess(NULL,
-  //     szCmdline,     // command line
-  //     NULL,          // process security attributes
-  //     NULL,          // primary thread security attributes
-  //     TRUE,          // handles are inherited
-  //     0,             // creation flags
-  //     NULL,          // use parent's environment
-  //     NULL,          // use parent's current directory
-  //     &start_info,  // STARTUPINFO pointer
-  //     &proc_info);  // receives PROCESS_INFORMATION
-
-  // return;
-  // END NAMED PIPES STUFF
-
-  // Create a pipe for the child process's STDOUT and ensure the read handle
-  // to the pipe for STDOUT is not inherited.
-  if(
-    !CreatePipe(&child_std_OUT_Rd, &child_std_OUT_Wr, &sec_attr, 0) ||
-    !SetHandleInformation(child_std_OUT_Rd, HANDLE_FLAG_INHERIT, 0))
+  // Use named pipes to allow non-blocking read
+  child_std_IN_Rd = CreateNamedPipe(
+      TEXT("\\\\.\\pipe\\cbmc\\SMT2\\child\\IN"),
+      PIPE_ACCESS_INBOUND,          // Reading for us
+      PIPE_TYPE_BYTE | PIPE_NOWAIT, // Bytes and non-blocking
+      PIPE_UNLIMITED_INSTANCES,     // Probably doesn't matter
+      BUFSIZE, BUFSIZE,             // Output and input bufffer sizes
+      0,                            // Timeout in ms, 0 = use system default
+      &sec_attr);                   // For inheritance by child
+  if(child_std_IN_Rd == INVALID_HANDLE_VALUE)
   {
-    throw std::runtime_error("Input pipe creation failed");
+    throw std::runtime_error("Input pipe creation failed for child_std_IN_Rd");
   }
-  // Create a pipe for the child process's STDIN and ensure the write handle
-  // to the pipe for STDIN is not inherited.
-  if(
-    !CreatePipe(&child_std_IN_Rd, &child_std_IN_Wr, &sec_attr, 0) ||
-    !SetHandleInformation(child_std_IN_Wr, HANDLE_FLAG_INHERIT, 0))
+  // Connect to the other side of the pipe
+  child_std_IN_Wr = CreateFileA(
+    "\\\\.\\pipe\\cbmc\\SMT2\\child\\IN",
+    GENERIC_WRITE,                                  // Write side
+    FILE_SHARE_READ | FILE_SHARE_WRITE,             // Shared read/write
+    &sec_attr,                                      // Need this for inherit
+    OPEN_EXISTING,                                  // Opening other end
+    FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, // Normal, but don't buffer
+    NULL);
+  if(child_std_IN_Wr == INVALID_HANDLE_VALUE)
   {
-    throw std::runtime_error("Output pipe creation failed");
+    throw std::runtime_error("Input pipe creation failed for child_std_IN_Wr");
+  }
+  if(!SetHandleInformation(child_std_IN_Rd, HANDLE_FLAG_INHERIT, 0))
+  {
+    throw std::runtime_error("Input pipe creation failed on SetHandleInformation");
+  }
+  child_std_OUT_Rd = CreateNamedPipe(
+      TEXT("\\\\.\\pipe\\cbmc\\SMT2\\child\\OUT"),
+      PIPE_ACCESS_INBOUND,          // Reading for us
+      PIPE_TYPE_BYTE | PIPE_NOWAIT, // Bytes and non-blocking
+      PIPE_UNLIMITED_INSTANCES,     // Probably doesn't matter
+      BUFSIZE, BUFSIZE,             // Output and input bufffer sizes
+      0,                            // Timeout in ms, 0 = use system default
+      &sec_attr);                   // For inheritance by child
+  if(child_std_OUT_Rd == INVALID_HANDLE_VALUE)
+  {
+    throw std::runtime_error("Output pipe creation failed for child_std_OUT_Rd");
+  }
+  child_std_OUT_Wr = CreateFileA(
+    "\\\\.\\pipe\\cbmc\\SMT2\\child\\OUT",
+    GENERIC_WRITE,                                  // Write side
+    FILE_SHARE_READ | FILE_SHARE_WRITE,             // Shared read/write
+    &sec_attr,                                      // Need this for inherit
+    OPEN_EXISTING,                                  // Opening other end
+    FILE_ATTRIBUTE_NORMAL | FILE_FLAG_NO_BUFFERING, // Normal, but don't buffer
+    NULL);
+  if(child_std_OUT_Wr == INVALID_HANDLE_VALUE)
+  {
+    throw std::runtime_error("Output pipe creation failed for child_std_OUT_Wr");
+  }
+  if(!SetHandleInformation(child_std_OUT_Rd, HANDLE_FLAG_INHERIT, 0))
+  {
+    throw std::runtime_error("Output pipe creation failed on SetHandleInformation");
   }
   // Create the child process
   STARTUPINFO start_info;
@@ -131,7 +125,7 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
     &proc_info); // receives PROCESS_INFORMATION
   // Close handles to the stdin and stdout pipes no longer needed by the
   // child process. If they are not explicitly closed, there is no way to
-  // recognize that the child process has ended.
+  // recognize that the child process has ended (but maybe we don't care).
   CloseHandle(child_std_OUT_Wr);
   CloseHandle(child_std_IN_Rd);
 #else
@@ -153,7 +147,6 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
   if(pid == 0)
   {
     // child process here
-
     // Close pipes that will be used by the parent so we do
     // not have our own copies and conflicts.
     close(pipe_input[1]);
@@ -204,20 +197,18 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
 
 piped_processt::~piped_processt()
 {
+  // Close the parent side of the remaining pipes
+  // and kill child process
 #ifdef _WIN32
-  // CloseHandle(child_std_OUT);
-  // CloseHandle(child_std_IN);
   CloseHandle(child_std_OUT_Rd);
   CloseHandle(child_std_IN_Wr);
+  TerminateProcess(proc_info.hProcess, 0);
   CloseHandle(proc_info.hProcess);
   CloseHandle(proc_info.hThread);
-  //TODO: kill child!
 #else
-  // Close the parent side of the remaning pipes
   fclose(command_stream);
   // Note that the above will call close(pipe_input[1]);
   close(pipe_output[0]);
-  // Send signal to the child process to terminate
   kill(pid, SIGTERM);
 #endif
 }
@@ -236,7 +227,6 @@ piped_processt::send_responset piped_processt::send(const std::string &message)
     return send_responset::FAILED;
   }
 #else
-  // send message to solver process
   int send_status = fputs(message.c_str(), command_stream);
   fflush(command_stream);
   if(send_status == EOF)
@@ -274,51 +264,6 @@ std::string piped_processt::receive()
     }
   }
   return response;
-// #ifdef _WIN32
-//   // A lot of this could be unified with the Linux/MacOS version, TODO
-//   BOOL success = TRUE;
-//   DWORD nbytes;
-//   while(success)
-//   {
-//     success = ReadFile(child_std_OUT_Rd, buff, BUFSIZE, &nbytes, NULL);
-//     if(!success || nbytes == 0)
-//     // This has some old error handling stuff, but it's not properly done
-//     // left for information.
-//     // {
-//     //   nbytes = GetLastError(); // error code only
-//     //   std::ostringstream stream;
-//     //   stream << nbytes;
-//     //   response.append(" error code: ");
-//     //   response.append(stream.str());
-//     //   return response;
-//     // }
-//     // else if(nbytes == 0)
-//     {
-//       return response;
-//     }
-//     response.append(buff, nbytes);
-//   }
-// #else
-//   int nbytes;
-//   while(true)
-//   {
-//     nbytes = read(pipe_output[0], buff, BUFSIZE);
-//     switch(nbytes)
-//     {
-//     case -1:
-//       // Nothing more to read in the pipe
-//       return response;
-//     case 0:
-//       // Pipe is closed.
-//       process_state = statet::STOPPED;
-//       return response;
-//     default:
-//       // Read some bytes, append them to the response and continue
-//       response.append(buff, nbytes);
-//     }
-//   }
-// #endif
-//   UNREACHABLE;
 }
 
 std::string piped_processt::wait_receive()
@@ -348,9 +293,15 @@ bool piped_processt::can_receive(optionalt<std::size_t> wait_time)
   }
 #ifdef _WIN32
   int waited_time = 0;
+  // The next four need to be initialised for compiler warnings
+  DWORD buffer = 0;
+  LPDWORD nbytes = 0;
+  LPDWORD rbytes = 0;
+  LPDWORD rmbytes = 0;
   while(timeout < 0 || waited_time >= timeout)
   {
-    if(PeekNamedPipe(child_std_OUT_Rd, NULL, 0, NULL, NULL, NULL))
+    PeekNamedPipe(child_std_OUT_Rd, &buffer, 1, nbytes, rbytes, rmbytes);
+    if(buffer != 0)
     {
       return true;
     }
@@ -359,9 +310,6 @@ bool piped_processt::can_receive(optionalt<std::size_t> wait_time)
     Sleep(WIN_POLL_WAIT);
     waited_time += WIN_POLL_WAIT;
   }
-  return false;
-  // UNIMPLEMENTED_FEATURE(
-  //   "Pipe IPC on windows: can_receive(optionalt<std::size_t> wait_time)");
 #else
   int ready;
   struct pollfd fds // NOLINT
@@ -391,8 +339,8 @@ bool piped_processt::can_receive(optionalt<std::size_t> wait_time)
     }
     // Some revent we did not ask for or check for, can't read though.
   }
-  return false;
 #endif
+  return false;
 }
 
 bool piped_processt::can_receive()
