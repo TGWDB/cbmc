@@ -32,23 +32,37 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
   // Ensure pipes are inherited
   sec_attr.nLength = sizeof(SECURITY_ATTRIBUTES);
   sec_attr.bInheritHandle = TRUE;
+  // This sets the security to the default for the current session access token
+  // See following link for details
+  // https://docs.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa379560(v=vs.85) //NOLINT
   sec_attr.lpSecurityDescriptor = NULL;
   // Use named pipes to allow non-blocking read
+  // Seed random numbers
+  srand((unsigned)time(NULL));
+  // Build the base name for the pipes
+  std::string base_name = "\\\\.\\pipe\\cbmc\\SMT2\\child\\";
+  // Use a random number here, a [G/U]UID would be better, but much more
+  // annoying to handle on Windows and do the conversion.
+  base_name.append(std::to_string(rand()));
+  std::string tmp_name = base_name;
+  tmp_name.append("\\IN");
+  LPCSTR tmp_str = tmp_name.c_str();
   child_std_IN_Rd = CreateNamedPipe(
-      TEXT("\\\\.\\pipe\\cbmc\\SMT2\\child\\IN"),
-      PIPE_ACCESS_INBOUND,          // Reading for us
-      PIPE_TYPE_BYTE | PIPE_NOWAIT, // Bytes and non-blocking
-      PIPE_UNLIMITED_INSTANCES,     // Probably doesn't matter
-      BUFSIZE, BUFSIZE,             // Output and input bufffer sizes
-      0,                            // Timeout in ms, 0 = use system default
-      &sec_attr);                   // For inheritance by child
+    tmp_str,
+    PIPE_ACCESS_INBOUND,          // Reading for us
+    PIPE_TYPE_BYTE | PIPE_NOWAIT, // Bytes and non-blocking
+    PIPE_UNLIMITED_INSTANCES,     // Probably doesn't matter
+    BUFSIZE,
+    BUFSIZE,    // Output and input bufffer sizes
+    0,          // Timeout in ms, 0 = use system default
+    &sec_attr); // For inheritance by child
   if(child_std_IN_Rd == INVALID_HANDLE_VALUE)
   {
     throw std::runtime_error("Input pipe creation failed for child_std_IN_Rd");
   }
   // Connect to the other side of the pipe
   child_std_IN_Wr = CreateFileA(
-    "\\\\.\\pipe\\cbmc\\SMT2\\child\\IN",
+    tmp_str,
     GENERIC_WRITE,                                  // Write side
     FILE_SHARE_READ | FILE_SHARE_WRITE,             // Shared read/write
     &sec_attr,                                      // Need this for inherit
@@ -61,22 +75,28 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
   }
   if(!SetHandleInformation(child_std_IN_Rd, HANDLE_FLAG_INHERIT, 0))
   {
-    throw std::runtime_error("Input pipe creation failed on SetHandleInformation");
+    throw std::runtime_error(
+      "Input pipe creation failed on SetHandleInformation");
   }
+  tmp_name = base_name;
+  tmp_name.append("\\OUT");
+  tmp_str = tmp_name.c_str();
   child_std_OUT_Rd = CreateNamedPipe(
-      TEXT("\\\\.\\pipe\\cbmc\\SMT2\\child\\OUT"),
-      PIPE_ACCESS_INBOUND,          // Reading for us
-      PIPE_TYPE_BYTE | PIPE_NOWAIT, // Bytes and non-blocking
-      PIPE_UNLIMITED_INSTANCES,     // Probably doesn't matter
-      BUFSIZE, BUFSIZE,             // Output and input bufffer sizes
-      0,                            // Timeout in ms, 0 = use system default
-      &sec_attr);                   // For inheritance by child
+    tmp_str,
+    PIPE_ACCESS_INBOUND,          // Reading for us
+    PIPE_TYPE_BYTE | PIPE_NOWAIT, // Bytes and non-blocking
+    PIPE_UNLIMITED_INSTANCES,     // Probably doesn't matter
+    BUFSIZE,
+    BUFSIZE,    // Output and input bufffer sizes
+    0,          // Timeout in ms, 0 = use system default
+    &sec_attr); // For inheritance by child
   if(child_std_OUT_Rd == INVALID_HANDLE_VALUE)
   {
-    throw std::runtime_error("Output pipe creation failed for child_std_OUT_Rd");
+    throw std::runtime_error(
+      "Output pipe creation failed for child_std_OUT_Rd");
   }
   child_std_OUT_Wr = CreateFileA(
-    "\\\\.\\pipe\\cbmc\\SMT2\\child\\OUT",
+    tmp_str,
     GENERIC_WRITE,                                  // Write side
     FILE_SHARE_READ | FILE_SHARE_WRITE,             // Shared read/write
     &sec_attr,                                      // Need this for inherit
@@ -85,11 +105,13 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
     NULL);
   if(child_std_OUT_Wr == INVALID_HANDLE_VALUE)
   {
-    throw std::runtime_error("Output pipe creation failed for child_std_OUT_Wr");
+    throw std::runtime_error(
+      "Output pipe creation failed for child_std_OUT_Wr");
   }
   if(!SetHandleInformation(child_std_OUT_Rd, HANDLE_FLAG_INHERIT, 0))
   {
-    throw std::runtime_error("Output pipe creation failed on SetHandleInformation");
+    throw std::runtime_error(
+      "Output pipe creation failed on SetHandleInformation");
   }
   // Create the child process
   STARTUPINFO start_info;
@@ -110,17 +132,18 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
   }
   // Note that we do NOT free this since it becomes part of the child
   // and causes heap corruption in Windows if we free!
-  TCHAR *szCmdline = (TCHAR *)malloc(sizeof(TCHAR) * cmdline.size());
+  TCHAR *szCmdline =
+    reinterpret_cast<TCHAR *>(malloc(sizeof(TCHAR) * cmdline.size()));
   _tcscpy(szCmdline, cmdline.c_str());
   success = CreateProcess(
-    NULL,         // application name, we only use the command below
-    szCmdline,    // command line
-    NULL,         // process security attributes
-    NULL,         // primary thread security attributes
-    TRUE,         // handles are inherited
-    0,            // creation flags
-    NULL,         // use parent's environment
-    NULL,         // use parent's current directory
+    NULL,        // application name, we only use the command below
+    szCmdline,   // command line
+    NULL,        // process security attributes
+    NULL,        // primary thread security attributes
+    TRUE,        // handles are inherited
+    0,           // creation flags
+    NULL,        // use parent's environment
+    NULL,        // use parent's current directory
     &start_info, // STARTUPINFO pointer
     &proc_info); // receives PROCESS_INFORMATION
   // Close handles to the stdin and stdout pipes no longer needed by the
@@ -220,8 +243,7 @@ piped_processt::send_responset piped_processt::send(const std::string &message)
     return send_responset::ERRORED;
   }
 #ifdef _WIN32
-  if(!WriteFile(
-    child_std_IN_Wr, message.c_str(), message.size(), NULL, NULL))
+  if(!WriteFile(child_std_IN_Wr, message.c_str(), message.size(), NULL, NULL))
   {
     // Error handling with GetLastError ?
     return send_responset::FAILED;
@@ -256,7 +278,7 @@ std::string piped_processt::receive()
     success = ReadFile(child_std_OUT_Rd, buff, BUFSIZE, &nbytes, NULL);
 #else
     nbytes = read(pipe_output[0], buff, BUFSIZE);
-    success = nbytes > 0;   // 0 is error, -1 is nothing to read
+    success = nbytes > 0; // 0 is error, -1 is nothing to read
 #endif
     if(nbytes > 0)
     {
@@ -305,7 +327,7 @@ bool piped_processt::can_receive(optionalt<std::size_t> wait_time)
     {
       return true;
     }
-// TODO, make this define and choice better
+// TODO make this define and choice better
 #  define WIN_POLL_WAIT 10
     Sleep(WIN_POLL_WAIT);
     waited_time += WIN_POLL_WAIT;
