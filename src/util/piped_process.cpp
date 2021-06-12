@@ -3,7 +3,9 @@
 /// \author Diffblue Ltd.
 
 #ifdef _WIN32
-#  include <tchar.h> // library for _tcscpy function
+#  include "run.h"     // for Windows arg quoting
+#  include "unicode.h" // for widen function
+#  include <tchar.h>   // library for _tcscpy function
 #else
 #  include <fcntl.h>  // library for fcntl function
 #  include <poll.h>   // library for poll function
@@ -114,28 +116,28 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
       "Output pipe creation failed on SetHandleInformation");
   }
   // Create the child process
-  STARTUPINFO start_info;
+  STARTUPINFOW start_info;
   BOOL success = FALSE;
   ZeroMemory(&proc_info, sizeof(PROCESS_INFORMATION));
-  ZeroMemory(&start_info, sizeof(STARTUPINFO));
-  start_info.cb = sizeof(STARTUPINFO);
+  ZeroMemory(&start_info, sizeof(STARTUPINFOW));
+  start_info.cb = sizeof(STARTUPINFOW);
   start_info.hStdError = child_std_OUT_Wr;
   start_info.hStdOutput = child_std_OUT_Wr;
   start_info.hStdInput = child_std_IN_Rd;
   start_info.dwFlags |= STARTF_USESTDHANDLES;
   // Unpack the command into a single string for Windows API
-  std::string cmdline = "";
-  for(int i = 0; i < commandvec.size(); i++)
+  std::wstring cmdline = widen(commandvec[0]);
+  for(int i = 1; i < commandvec.size(); i++)
   {
-    cmdline.append(commandvec[i].c_str());
-    cmdline.append(" ");
+    cmdline.append(L" ");
+    cmdline.append(quote_windows_arg(widen(commandvec[i])));
   }
   // Note that we do NOT free this since it becomes part of the child
   // and causes heap corruption in Windows if we free!
-  TCHAR *szCmdline =
-    reinterpret_cast<TCHAR *>(malloc(sizeof(TCHAR) * cmdline.size()));
-  _tcscpy(szCmdline, cmdline.c_str());
-  success = CreateProcess(
+  WCHAR *szCmdline =
+    reinterpret_cast<WCHAR *>(malloc(sizeof(WCHAR) * cmdline.size()));
+  wcscpy(szCmdline, cmdline.c_str());
+  success = CreateProcessW(
     NULL,        // application name, we only use the command below
     szCmdline,   // command line
     NULL,        // process security attributes
