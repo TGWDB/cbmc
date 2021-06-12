@@ -223,9 +223,15 @@ piped_processt::~piped_processt()
   // Close the parent side of the remaining pipes
   // and kill child process
 #ifdef _WIN32
+  TerminateProcess(proc_info.hProcess, 0);
+  // Disconnecting the pipes also kicks the client off, it should be killed
+  // by now, but this will also force the client off.
+  // Note that pipes are cleaned up by Windows when all handles to the pipe
+  // are closed. Disconnect may be superfluous here.
+  DisconnectNamedPipe(child_std_OUT_Rd);
+  DisconnectNamedPipe(child_std_IN_Wr);
   CloseHandle(child_std_OUT_Rd);
   CloseHandle(child_std_IN_Wr);
-  TerminateProcess(proc_info.hProcess, 0);
   CloseHandle(proc_info.hProcess);
   CloseHandle(proc_info.hThread);
 #else
