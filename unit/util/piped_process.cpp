@@ -11,15 +11,14 @@ TEST_CASE(
   "Creating a sub process and reading its output.",
   "[core][util][piped_process]")
 {
-  const std::string to_be_echoed = "The Jabberwocky";
   std::vector<std::string> commands;
 #ifdef _WIN32
-  commands.push_back("cmd /c echo");
+  commands.push_back("cmd /c echo The Jabberwocky");
 #else
   // Need to give path to avoid shell built-in invocation
   commands.push_back("/bin/echo");
+  commands.push_back("The Jabberwocky");
 #endif
-  commands.push_back(to_be_echoed);
   piped_processt process = piped_processt(commands);
 
   // This is an indirect way to detect when the pipe has something since
@@ -28,7 +27,7 @@ TEST_CASE(
   process.can_receive(PIPED_PROCESS_INFINITE_TIMEOUT);
   std::string response = strip_string(process.receive());
 
-  REQUIRE(response == to_be_echoed);
+  REQUIRE(response == "The Jabberwocky");
 }
 
 TEST_CASE(
