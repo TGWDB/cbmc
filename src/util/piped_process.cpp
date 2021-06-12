@@ -43,7 +43,7 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
   std::string base_name = "\\\\.\\pipe\\cbmc\\SMT2\\child\\";
   // Use a random number here, a [G/U]UID would be better, but much more
   // annoying to handle on Windows and do the conversion.
-  base_name.append(std::to_string(rand()));
+  base_name.append(std::to_string(rand())); // NOLINT
   std::string tmp_name = base_name;
   tmp_name.append("\\IN");
   LPCSTR tmp_str = tmp_name.c_str();
