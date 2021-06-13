@@ -39,13 +39,10 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
   // https://docs.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa379560(v=vs.85) //NOLINT
   sec_attr.lpSecurityDescriptor = NULL;
   // Use named pipes to allow non-blocking read
-  // Seed random numbers
-  srand((unsigned)time(NULL));
   // Build the base name for the pipes
   std::string base_name = "\\\\.\\pipe\\cbmc\\SMT2\\child\\";
-  // Use a random number here, a [G/U]UID would be better, but much more
-  // annoying to handle on Windows and do the conversion.
-  base_name.append(std::to_string(rand())); // NOLINT
+  // Use process ID as a unique ID for this process at this time.
+  base_name.append(std::to_string(GetCurrentProcessId()));
   std::string tmp_name = base_name;
   tmp_name.append("\\IN");
   LPCSTR tmp_str = tmp_name.c_str();
@@ -134,20 +131,17 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
   }
   // Note that we do NOT free this since it becomes part of the child
   // and causes heap corruption in Windows if we free!
-  WCHAR *szCmdline =
-    reinterpret_cast<WCHAR *>(malloc(sizeof(WCHAR) * cmdline.size()));
-  wcscpy(szCmdline, cmdline.c_str());
   success = CreateProcessW(
-    NULL,        // application name, we only use the command below
-    szCmdline,   // command line
-    NULL,        // process security attributes
-    NULL,        // primary thread security attributes
-    TRUE,        // handles are inherited
-    0,           // creation flags
-    NULL,        // use parent's environment
-    NULL,        // use parent's current directory
-    &start_info, // STARTUPINFO pointer
-    &proc_info); // receives PROCESS_INFORMATION
+    NULL,                     // application name, we only use the command below
+    _wcsdup(cmdline.c_str()), // command line
+    NULL,                     // process security attributes
+    NULL,                     // primary thread security attributes
+    TRUE,                     // handles are inherited
+    0,                        // creation flags
+    NULL,                     // use parent's environment
+    NULL,                     // use parent's current directory
+    &start_info,              // STARTUPINFO pointer
+    &proc_info);              // receives PROCESS_INFORMATION
   // Close handles to the stdin and stdout pipes no longer needed by the
   // child process. If they are not explicitly closed, there is no way to
   // recognize that the child process has ended (but maybe we don't care).
