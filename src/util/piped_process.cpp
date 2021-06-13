@@ -182,20 +182,11 @@ piped_processt::piped_processt(const std::vector<std::string> commandvec)
     unsigned long i = 0;
     while(i < commandvec.size())
     {
-      args[i] = strdup(commandvec[i].c_str());
+      args[i] = const_cast<char *>(commandvec[i].c_str());
       i++;
     }
     args[i] = NULL;
     execvp(commandvec[0].c_str(), args);
-    // The args variable will be handled by the OS if execvp succeeds, but
-    // if execvp fails then we should free it here (just in case the runtime
-    // error below continues execution.)
-    while(i > 0)
-    {
-      i--;
-      free(args[i]);
-    }
-    free(args);
     // Only reachable if execvp failed
     std::cerr << "Launching " << commandvec[0]
               << " failed with error: " << strerror(errno) << std::endl;
