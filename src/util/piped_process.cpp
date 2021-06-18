@@ -2,6 +2,79 @@
 /// Subprocess communication with pipes.
 /// \author Diffblue Ltd.
 
+// NOTES ON WINDOWS PIPES IMPLEMENTATION
+//
+// This is a note to explain the choices related to the Windows pipes
+// implementation and to serve as information for future work on the
+// Windows parts of this class.
+//
+// Windows supports two kinds of pipes: anonymous and named.
+//
+// Anonymous pipes can only operate in blocking mode. This is a problem for
+// this class because blocking mode pipes (on Windows) will not allow the
+// other end to read until the process providing the data has terminated.
+// (You might think that this is not necessary, but in practice this is
+// the case.) For example, if we ran
+//    echo The Jabberwocky; ping 127.0.0.1 -n 6 >nul
+// on the command line in Windows we would see the string "The Jabberwocky"
+// immediately, and then the command would end about 6 seconds later after the
+// pings complete. However, a blocking pipe will see nothing until the ping
+// command has finished, even if the echo has completed and (supposedly)
+// written to the pipe.
+//
+// For the above reason, we NEED to be able to use non-blocking pipes. Since
+// anonymous pipes cannot be non-blocking (in theory they have a named pipe
+// underneath, but it's not clear you could hack this to be non-blocking
+// safely), we have to use named pipes.
+//
+// Named pipes can be non-blocking and this is how we create them.
+//
+// Aside on security:
+// Named pipes can be connected to by other processes and here we have NOT
+// gone deep into the security handling. The default used here is to allow
+// access from the same session token/permissions. This SHOULD be sufficient
+// for what we need.
+//
+// Non-blocking pipes allow immediate reading of any data on the pipre which
+// matches the Linux/MasOC pipe behvariour and also allows reading of the
+// string "The Jabberwocky" from the example above before waiting for the ping
+// command to terminate. This reading can be done with any of the usual pipe
+// read/peek functions, so we use those.
+//
+// There is one problem with the approach used here, that there is no Windows
+// function that can wait on a non-blocking pipe. There are a few options that
+// appear like they would work (or claim they work). Details on these and why
+// they don't work are over-viewed here:
+// -  WaitCommEvent claims it can wait for events on a handle (e.g. char
+//    written) which would be perfect. Unfortunately on a non-blocking pipe
+//    this returns immediately. Using this on a blocking pipe fails to detect
+//    that a character is written until the other process terminates in the
+//    example above, making this ineffective for what we want.
+// -  Setting the pipe timeout or changing blocking after creation. This is
+//    theoretically possible, but in practice either has no effect, or can
+//    cause a segmentation fault. This was attempted with the SetCommTimeouts
+//    function and cause segfault.
+// -  Using a wait for event function (e.g. WaitForMultipleObjects, also single
+//    object, event, etc.). These can in theory wait until an event, but have
+//    the problem that with non-blocking pipes, the wait will not happen since
+//    they return immediately. One might think they can work with a blocking
+//    pipe and a timeout (i.e. have a blocking read and a timeout thread and
+//    wait for one of them to happen to see if there is something to read or
+//    whether we could timeout). However, while this can create the right
+//    wait and timeout behaviour, since the underlying pipe is blocking this
+//    means the example above cannot read "The Jabberwocky" until the ping has
+//    finished, again undoing the interactive behaviour desired.
+// Since none of the above work effectivley, the chosen approach is to use a
+// non-blocking peek to see if there is anthing to read, and use a sleep and
+// poll behaviour that might be puch busier than we want. At the time of
+// writing this has not been made smart, just a first choice option for how
+// frequently to poll.
+//
+// Conclusion
+// The implementation is written this way to mitigate the problems with what
+// can and cannot be done with Windows pipes. It's not always pretty, but it
+// does work and handles what we want.
+
 #ifdef _WIN32
 #  include "run.h"     // for Windows arg quoting
 #  include "unicode.h" // for widen function
