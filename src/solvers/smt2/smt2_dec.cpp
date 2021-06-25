@@ -40,11 +40,12 @@ decision_proceduret::resultt smt2_dect::dec_solve()
     temp_file_stderr("smt2_dec_stderr_", "");
 
   {
+    write_footer();
+
     // we write the problem into a file
     std::ofstream problem_out(
       temp_file_problem(), std::ios_base::out | std::ios_base::trunc);
     problem_out << stringstream.str();
-    write_footer(problem_out);
   }
 
   std::vector<std::string> argv;
