@@ -182,7 +182,7 @@ void smt2_convt::write_footer(std::ostream &os)
 
   // fix up the object sizes
   for(const auto &object : object_sizes)
-    define_object_size(object.second, object.first);
+    define_object_size(object.second, object.first, os);
 
   if(use_check_sat_assuming && !assumptions.empty())
   {
@@ -229,7 +229,8 @@ void smt2_convt::write_footer(std::ostream &os)
 
 void smt2_convt::define_object_size(
   const irep_idt &id,
-  const exprt &expr)
+  const exprt &expr,
+  std::ostream &os)
 {
   PRECONDITION(expr.id() == ID_object_size);
   const exprt &ptr = to_unary_expr(expr).op();
@@ -254,12 +255,30 @@ void smt2_convt::define_object_size(
       continue;
     }
 
-    out << "(assert (=> (= "
-        << "((_ extract " << h << " " << l << ") ";
-    convert_expr(ptr);
-    out << ") (_ bv" << number << " " << config.bv_encoding.object_bits << "))"
-        << "(= |" << id << "| (_ bv" << *object_size << " " << size_width
-        << "))))\n";
+    os << "(assert (=> (= "
+       << "((_ extract " << h << " " << l << ") ";
+    // If cases below do the work of convert_expr for the ptr
+    // variable. This is due to convert_expr using "out" and not
+    // "os", causing this symbol to be lost in some code paths.
+    if(ptr.id() == ID_symbol)
+    {
+      const irep_idt &tmp_id = to_symbol_expr(ptr).get_identifier();
+      DATA_INVARIANT(!tmp_id.empty(), "symbol must have identifier");
+      os << '|' << convert_identifier(tmp_id) << '|';
+    }
+    else if(ptr.id() == ID_nondet_symbol)
+    {
+      const irep_idt &tmp_id = to_nondet_symbol_expr(ptr).get_identifier();
+      DATA_INVARIANT(!tmp_id.empty(), "nondet symbol must have identifier");
+      os << '|' << convert_identifier("nondet_" + id2string(id)) << '|';
+    }
+    else
+    {
+      UNREACHABLE;
+    }
+    os << ") (_ bv" << number << " " << config.bv_encoding.object_bits << "))"
+       << "(= |" << id << "| (_ bv" << *object_size << " " << size_width
+       << "))))\n";
 
     ++number;
   }

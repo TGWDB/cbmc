@@ -190,7 +190,8 @@ protected:
   void convert_address_of_rec(
     const exprt &expr, const pointer_typet &result_type);
 
-  void define_object_size(const irep_idt &id, const exprt &expr);
+  void
+  define_object_size(const irep_idt &id, const exprt &expr, std::ostream &os);
 
   // keeps track of all non-Boolean symbols and their value
   struct identifiert
