@@ -96,6 +96,8 @@ smt2_convt::smt2_convt(
     break;
 
   case solvert::CVC4:
+    logic = "ALL";
+    use_array_of_bool = true;
     use_as_const = true;
     break;
 
@@ -180,9 +182,14 @@ void smt2_convt::write_footer(std::ostream &os)
 {
   os << "\n";
 
+  os << "; Before writing object sizes for " << object_sizes.size()
+     << " objects\n";
   // fix up the object sizes
   for(const auto &object : object_sizes)
+  {
+    os << "; About to do an object...\n";
     define_object_size(object.second, object.first);
+  }
 
   if(use_check_sat_assuming && !assumptions.empty())
   {
@@ -239,6 +246,9 @@ void smt2_convt::define_object_size(
   std::size_t h=pointer_width-1;
   std::size_t l=pointer_width-config.bv_encoding.object_bits;
 
+  out << "; About to emit potential asserts for "
+      << pointer_logic.objects.size() << " objects\n";
+
   for(const auto &o : pointer_logic.objects)
   {
     const typet &type = o.type();
@@ -250,6 +260,7 @@ void smt2_convt::define_object_size(
       (o.id() != ID_symbol && o.id() != ID_string_constant) ||
       !size_expr.has_value() || !object_size.has_value())
     {
+      out << "; skipping " << o.id_string() << "\n";
       ++number;
       continue;
     }
@@ -258,7 +269,7 @@ void smt2_convt::define_object_size(
         << "((_ extract " << h << " " << l << ") ";
     convert_expr(ptr);
     out << ") (_ bv" << number << " " << config.bv_encoding.object_bits << "))"
-        << "(= " << id << " (_ bv" << *object_size << " " << size_width
+        << "(= |" << id << "| (_ bv" << *object_size << " " << size_width
         << "))))\n";
 
     ++number;
@@ -1931,7 +1942,7 @@ void smt2_convt::convert_expr(const exprt &expr)
   }
   else if(expr.id()==ID_object_size)
   {
-    out << object_sizes[expr];
+    out << "|" << object_sizes[expr] << "|";
   }
   else if(expr.id()==ID_let)
   {
@@ -4589,7 +4600,7 @@ void smt2_convt::find_symbols(const exprt &expr)
       {
         const irep_idt id =
           "object_size." + std::to_string(object_sizes.size());
-        out << "(declare-fun " << id << " () ";
+        out << "(declare-fun |" << id << "| () ";
         convert_type(expr.type());
         out << ")" << "\n";
 

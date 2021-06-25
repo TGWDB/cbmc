@@ -15,6 +15,8 @@ Author: Daniel Kroening, kroening@kroening.com
 
 #include "smt2irep.h"
 
+#include <iostream>
+
 std::string smt2_dect::decision_procedure_text() const
 {
   // clang-format off
@@ -45,6 +47,14 @@ decision_proceduret::resultt smt2_dect::dec_solve()
       temp_file_problem(), std::ios_base::out | std::ios_base::trunc);
     problem_out << stringstream.str();
     write_footer(problem_out);
+  }
+
+  std::ifstream tmp_stream(temp_file_problem(), std::ios_base::in);
+  char buff[1024];
+  while(tmp_stream)
+  {
+    tmp_stream.read(buff, 1024);
+    std::cerr << buff;
   }
 
   std::vector<std::string> argv;
