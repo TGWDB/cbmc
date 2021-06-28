@@ -114,7 +114,7 @@ smt2_convt::smt2_convt(
     use_datatypes = true;
     break;
   }
-
+  object_sizes_written = false;
   write_header();
 }
 
@@ -179,10 +179,6 @@ void smt2_convt::write_header()
 void smt2_convt::write_footer(std::ostream &os)
 {
   os << "\n";
-
-  // fix up the object sizes
-  for(const auto &object : object_sizes)
-    define_object_size(object.second, object.first);
 
   if(use_check_sat_assuming && !assumptions.empty())
   {
@@ -265,8 +261,20 @@ void smt2_convt::define_object_size(
   }
 }
 
+void smt2_convt::write_object_sizes()
+{
+  if(object_sizes_written)
+    return;
+  object_sizes_written = true;
+  // fix up the object sizes
+  for(const auto &object : object_sizes)
+    define_object_size(object.second, object.first);
+
+}
+
 decision_proceduret::resultt smt2_convt::dec_solve()
 {
+  write_object_sizes();
   write_footer(out);
   out.flush();
   return decision_proceduret::resultt::D_ERROR;

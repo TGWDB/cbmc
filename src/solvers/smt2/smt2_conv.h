@@ -191,6 +191,7 @@ protected:
     const exprt &expr, const pointer_typet &result_type);
 
   void define_object_size(const irep_idt &id, const exprt &expr);
+  void write_object_sizes();
 
   // keeps track of all non-Boolean symbols and their value
   struct identifiert
@@ -227,6 +228,7 @@ protected:
   defined_expressionst defined_expressions;
 
   defined_expressionst object_sizes;
+  bool object_sizes_written;
 
   typedef std::set<std::string> smt2_identifierst;
   smt2_identifierst smt2_identifiers;
