@@ -40,6 +40,7 @@ decision_proceduret::resultt smt2_dect::dec_solve()
     temp_file_stderr("smt2_dec_stderr_", "");
 
   {
+    write_object_sizes();
     // we write the problem into a file
     std::ofstream problem_out(
       temp_file_problem(), std::ios_base::out | std::ios_base::trunc);
