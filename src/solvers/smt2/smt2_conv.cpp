@@ -745,6 +745,16 @@ literalt smt2_convt::convert(const exprt &expr)
   no_boolean_variables++;
 
   out << "; convert\n";
+  out << "; Converting var_no " << l.var_no() << " with expr ID of "
+      << expr.id_string() << "\n";
+  // We're converting the expression, so store it in the defined_expressions
+  // store and in future we use the literal instead of the whole expression
+  // Note that here we are always converting, so we do not need to consider
+  // other literal kinds, only "|B###|"
+  std::stringstream tmpstr;
+  tmpstr << "|B" << l.var_no() << "|";
+  defined_expressions[expr] = tmpstr.str();
+  // End temporary storage
   out << "(define-fun ";
   convert_literal(l);
   out << " () Bool ";
@@ -4314,7 +4324,28 @@ void smt2_convt::set_to(const exprt &expr, bool value)
 
   out << "; set_to " << (value?"true":"false") << "\n"
       << "(assert ";
-
+  if(!value)
+  {
+    out << "(not ";
+  }
+  const auto found_literal = defined_expressions.find(expr);
+  if(!(found_literal == defined_expressions.end()))
+  {
+    // This is a converted expression, we can just assert the literal name
+    // since the expression is already defined
+    out << found_literal->second;
+  }
+  else
+  {
+    convert_expr(prepared_expr);
+  }
+  if(!value)
+  {
+    out << ")";
+  }
+  out << ")\n";
+  return;
+  // OLD BELOW
   if(!value)
   {
     out << "(not ";
