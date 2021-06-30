@@ -250,6 +250,7 @@ protected:
 
   typedef std::map<exprt, irep_idt> defined_expressionst;
   defined_expressionst defined_expressions;
+  std::unordered_map<irep_idt, bool> set_values;
 
   defined_expressionst object_sizes;
 
