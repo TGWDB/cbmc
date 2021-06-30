@@ -319,6 +319,15 @@ exprt smt2_convt::get(const exprt &expr) const
   }
   else if(expr.is_constant())
     return expr;
+  else if(const auto &array = expr_try_dynamic_cast<array_exprt>(expr))
+  {
+    exprt array_copy = *array;
+    for(auto &element : array_copy.operands())
+    {
+      element = get(element);
+    }
+    return array_copy;
+  }
 
   return nil_exprt();
 }
@@ -745,6 +754,14 @@ literalt smt2_convt::convert(const exprt &expr)
   no_boolean_variables++;
 
   out << "; convert\n";
+  out << "; Converting var_no " << l.var_no() << " with expr ID of "
+      << expr.id_string() << "\n";
+  // We're converting the expression, so store it in the defined_expressions
+  // store and in future we use the literal instead of the whole expression
+  // Note that here we are always converting, so we do not need to consider
+  // other literal kinds, only "|B###|"
+  defined_expressions[expr] =
+    std::string{"|B"} + std::to_string(l.var_no()) + "|";
   out << "(define-fun ";
   convert_literal(l);
   out << " () Bool ";
@@ -4314,18 +4331,27 @@ void smt2_convt::set_to(const exprt &expr, bool value)
 
   out << "; set_to " << (value?"true":"false") << "\n"
       << "(assert ";
-
   if(!value)
   {
     out << "(not ";
-    convert_expr(prepared_expr);
-    out << ")";
+  }
+  const auto found_literal = defined_expressions.find(expr);
+  if(!(found_literal == defined_expressions.end()))
+  {
+    // This is a converted expression, we can just assert the literal name
+    // since the expression is already defined
+    out << found_literal->second;
+    set_values[found_literal->second] = value;
   }
   else
+  {
     convert_expr(prepared_expr);
-
-  out << ")" << "\n"; // assert
-
+  }
+  if(!value)
+  {
+    out << ")";
+  }
+  out << ")\n";
   return;
 }
 
