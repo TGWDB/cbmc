@@ -151,6 +151,10 @@ protected:
   exprt parse_union(const irept &s, const union_typet &type);
   exprt parse_array(const irept &s, const array_typet &type);
   exprt parse_rec(const irept &s, const typet &type);
+  void walk_array_tree(
+    std::unordered_map<size_t, exprt> *operands_map,
+    const irept &src,
+    const array_typet &type);
 
   // we use this to build a bit-vector encoding of the FPA theory
   void convert_floatbv(const exprt &expr);

@@ -283,6 +283,7 @@ exprt smt2_convt::get(const exprt &expr) const
 
     if(it!=identifier_map.end())
       return it->second.value;
+    return expr;
   }
   else if(expr.id()==ID_nondet_symbol)
   {
@@ -474,30 +475,54 @@ exprt smt2_convt::parse_array(
   const irept &src,
   const array_typet &type)
 {
+  std::unordered_map<size_t, exprt> operands_map;
+  walk_array_tree(&operands_map, src, type);
+  exprt::operandst operands;
+  size_t i = 0;
+  auto found_op = operands_map.find(i);
+  while(found_op != operands_map.end())
+  {
+    operands.emplace_back(found_op->second);
+    i++;
+    found_op = operands_map.find(i);
+  }
+  return array_exprt(operands, type);
+}
+
+void smt2_convt::walk_array_tree(
+  std::unordered_map<size_t, exprt> *operands_map,
+  const irept &src,
+  const array_typet &type)
+{
   if(src.get_sub().size()==4 && src.get_sub()[0].id()=="store")
   {
+    // This is the SMT syntax being parsed here
     // (store array index value)
-    if(src.get_sub().size()!=4)
-      return nil_exprt();
+    // Recurse
+    walk_array_tree(operands_map, src.get_sub()[1], type);
 
-    exprt array=parse_array(src.get_sub()[1], type);
-    exprt index=parse_rec(src.get_sub()[2], type.size().type());
-    exprt value=parse_rec(src.get_sub()[3], type.subtype());
+    // exprt index=parse_rec(src.get_sub()[2], type.size().type());
+    // exprt value=parse_rec(src.get_sub()[3], type.subtype());
 
-    return with_exprt(array, index, value);
+    const auto index_expr = parse_rec(src.get_sub()[2], type.size().type());
+    // Unsound?
+    const constant_exprt index_constant = to_constant_expr(index_expr);
+    mp_integer tempint;
+    bool failure = to_integer(index_constant, tempint);
+    if(failure)
+      return; // Who knows? FAILURE of some kind
+    size_t index = tempint.to_ulong();
+    exprt value = parse_rec(src.get_sub()[3], type.subtype());
+    operands_map->emplace(index, value);
   }
-  else if(src.get_sub().size()==2 &&
-          src.get_sub()[0].get_sub().size()==3 &&
-          src.get_sub()[0].get_sub()[0].id()=="as" &&
-          src.get_sub()[0].get_sub()[1].id()=="const")
+  else if(src.get_sub().size() == 3 && src.get_sub()[0].id() == "let")
   {
-    // This is produced by Z3.
-    // ((as const (Array (_ BitVec 64) (_ BitVec 8))) #x00)))
-    exprt value=parse_rec(src.get_sub()[1], type.subtype());
-    return array_of_exprt(value, type);
+    // This is produced by Z3
+    // (let (....) (....))
+    walk_array_tree(
+      operands_map, src.get_sub()[1].get_sub()[0].get_sub()[1], type);
+    walk_array_tree(operands_map, src.get_sub()[2], type);
   }
-  else
-    return nil_exprt();
 }
 
 exprt smt2_convt::parse_union(
