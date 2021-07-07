@@ -1,4 +1,4 @@
-CORE
+CORE broken-smt-backend
 union_list2.c
 
 ^EXIT=0$
